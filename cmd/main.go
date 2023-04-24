@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
-	"io/ioutil"
+	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -14,13 +14,16 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/openshift/linuxptp-daemon/pkg/config"
 	"github.com/openshift/linuxptp-daemon/pkg/daemon"
 	ptpclient "github.com/openshift/ptp-operator/pkg/client/clientset/versioned"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 )
 
 type cliParams struct {
@@ -135,7 +138,7 @@ func main() {
 					continue
 				}
 			}
-			nodeProfilesJson, err := ioutil.ReadFile(nodeProfile)
+			nodeProfilesJson, err := os.ReadFile(nodeProfile)
 			if err != nil {
 				glog.Errorf("error reading node profile: %v", nodeProfile)
 				continue
@@ -158,14 +161,26 @@ type patchStringValue struct {
 	Value string `json:"value"`
 }
 
-func labelPod(kubeClient *kubernetes.Clientset, nodeName, podName string) {
-	pod, err := kubeClient.CoreV1().Pods(daemon.PtpNamespace).Get(context.TODO(), podName, metav1.GetOptions{})
+func labelPod(kubeClient *kubernetes.Clientset, nodeName, podName string) (err error) {
+
+	// Set up the retry parameters
+	retryParams := retry.DefaultRetry
+	retryParams.Duration = 6 * time.Second
+	retryParams.Steps = 10
+
+	var pod *v1.Pod
+
+	// Use the OnError function to handle errors
+	err = retry.OnError(retryParams, errors.IsUnauthorized, func() error {
+		pod, err = kubeClient.CoreV1().Pods(daemon.PtpNamespace).Get(context.TODO(), podName, metav1.GetOptions{})
+		return err
+	})
 	if err != nil {
-		glog.Error(err)
+		return fmt.Errorf("error getting linuxptp-daemon pod, err=%s", err)
 	}
 	if pod == nil {
-		glog.Info("Could not find linux-ptp-daemon pod to label")
-		return
+		return fmt.Errorf("could not find linux-ptp-daemon pod to label")
+
 	}
 	if nodeName != "" && strings.Contains(nodeName, ".") {
 		nodeName = strings.Split(nodeName, ".")[0]
@@ -179,7 +194,9 @@ func labelPod(kubeClient *kubernetes.Clientset, nodeName, podName string) {
 	payloadBytes, _ := json.Marshal(payload)
 
 	_, err = kubeClient.CoreV1().Pods(pod.GetNamespace()).Patch(context.TODO(), pod.GetName(), types.JSONPatchType, payloadBytes, metav1.PatchOptions{})
-	if err == nil {
-		glog.Infof("Pod %s labelled successfully.", pod.GetName())
+	if err != nil {
+		return fmt.Errorf("could not label ns=%s pod %s, err=%s", pod.GetName(), pod.GetNamespace(), err)
 	}
+	glog.Infof("Pod %s labelled successfully.", pod.GetName())
+	return nil
 }
