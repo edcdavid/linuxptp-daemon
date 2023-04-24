@@ -101,7 +101,11 @@ func main() {
 	}
 
 	// label the current linux-ptp-daemon pod with a nodeName label
-	labelPod(kubeClient, nodeName, podName)
+	err=labelPod(kubeClient, nodeName, podName)
+	if err != nil {
+		glog.Errorf("failed to label linuxptp-daemon pod: %v", err)
+		return
+	}
 
 	go daemon.New(
 		nodeName,
