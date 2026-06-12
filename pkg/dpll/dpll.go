@@ -354,7 +354,7 @@ func (d *DpllConfig) CmdInit() {
 }
 
 // ProcessStatus ... process status
-func (d *DpllConfig) ProcessStatus(c *net.Conn, status int64) {
+func (d *DpllConfig) ProcessStatus(c net.Conn, status int64) {
 }
 
 // CmdRun ... run command

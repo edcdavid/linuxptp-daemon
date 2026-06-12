@@ -1277,6 +1277,8 @@ type PortRoleEvent struct {
 
 // SetPortRole saves the port role change event
 func (e *EventHandler) SetPortRole(cfgName, portName string, raw string) {
+	e.Lock()
+	defer e.Unlock()
 	if e.portRole == nil {
 		e.portRole = make(map[string]map[string]*PortRoleEvent)
 	}

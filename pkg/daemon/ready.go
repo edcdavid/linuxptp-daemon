@@ -81,21 +81,31 @@ type metricHandler struct {
 }
 
 func (h metricHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
+	glog.V(14).Info("/emit-logs: handler invoked")
 	if isReady, _ := h.tracker.Ready(); !isReady {
+		glog.V(14).Info("/emit-logs: not ready, opening gate early and returning 204")
 		w.WriteHeader(http.StatusNoContent)
+		if dn := h.tracker.processManager.daemon; dn != nil {
+			dn.liveGate.Open()
+		}
 		return
 	}
 	w.WriteHeader(http.StatusOK)
 
-	go func() {
-		eventHandler := h.tracker.processManager.ptpEventHandler
-		eventHandler.EmitClockSyncLogs()
-		eventHandler.EmitPortRoleLogs()
+	glog.V(14).Info("/emit-logs: starting synchronous replay (EmitClockSyncLogs + EmitPortRoleLogs)")
+	eventHandler := h.tracker.processManager.ptpEventHandler
+	eventHandler.EmitClockSyncLogs()
+	eventHandler.EmitPortRoleLogs()
+	glog.V(14).Info("/emit-logs: synchronous replay complete, opening liveGate")
 
-		processManager := h.tracker.processManager
-		go processManager.EmitProcessStatusLogs()
-		go processManager.EmitClockClassLogs()
-	}()
+	if dn := h.tracker.processManager.daemon; dn != nil {
+		dn.liveGate.Open()
+	}
+
+	glog.V(14).Info("/emit-logs: firing async emits (ProcessStatusLogs, ClockClassLogs)")
+	processManager := h.tracker.processManager
+	go processManager.EmitProcessStatusLogs()
+	go processManager.EmitClockClassLogs()
 }
 
 // StartReadyServer ...

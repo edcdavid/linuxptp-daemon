@@ -8,7 +8,7 @@ type process interface {
 	Stopped() bool
 	CmdStop()
 	CmdInit()
-	ProcessStatus(c *net.Conn, status int64)
+	ProcessStatus(c net.Conn, status int64)
 	CmdRun(stdToSocket bool)
 	MonitorProcess(p config.ProcessConfig)
 	ExitCh() chan struct{}
